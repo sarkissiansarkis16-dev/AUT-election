@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AUT Elections 2025</title>
+    
+    <!-- 1. LOAD LIBRARIES -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Recharts (Graphs) -->
+    <script src="https://unpkg.com/prop-types/prop-types.min.js"></script>
+    <script src="https://unpkg.com/recharts@2.12.2/umd/Recharts.js"></script>
+
+    <!-- 2. FIREBASE SETUP -->
+    <script type="importmap">
+      {
+        "imports": {
+          "firebase/app": "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js",
+          "firebase/firestore": "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js",
+          "firebase/auth": "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js"
+        }
+      }
+    </script>
+</head>
+<body class="bg-slate-50">
+    <div id="root"></div>
+
+    <script type="text/babel" data-type="module">
+        import { initializeApp } from 'firebase/app';
+        import { 
+          getFirestore, collection, doc, onSnapshot, 
+          setDoc, updateDoc, increment, addDoc, writeBatch 
+        } from 'firebase/firestore';
+        import { 
+            getAuth, signInAnonymously, onAuthStateChanged
+        } from 'firebase/auth';
+
+        // ==========================================
+        // YOUR KEYS (PRE-FILLED)
+        // ==========================================
+        const firebaseConfig = {
+          apiKey: "AIzaSyB9HN1svJbK6DW1is01h8H6mgHcOZPOFmc",
+          authDomain: "aut-election-system.firebaseapp.com",
+          projectId: "aut-election-system",
+          storageBucket: "aut-election-system.firebasestorage.app",
+          messagingSenderId: "864997702376",
+          appId: "1:864997702376:web:3948739e7bf65f7078a75d",
+          measurementId: "G-R3V2WCN20E"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        
+        const rawAppId = 'aut-election-live'; 
+        const appId = rawAppId.replace(/[^a-zA-Z0-9_-]/g, '_');
+
+        // --- BROWSER COMPATIBILITY SETUP ---
+        const { useState, useEffect, useMemo } = React;
+        const { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Legend } = window.Recharts;
+
+        // --- ICONS ---
+        const ICON_PATHS = {
+            GraduationCap: <><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></>,
+            Trophy: <><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></>,
+            Vote: <><path d="m9 12 2 2 4-4"/><path d="M5 7c0-1.1.9-2 2-2h10a2 2 0 0 1 2 2v12H5V7Z"/><path d="M22 19H2"/></>,
+            Save: <><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></>,
+            Trash2: <><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></>,
+            Lock: <><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></>,
+            RotateCcw: <><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></>,
+            Activity: <><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></>,
+            WifiOff: <><line x1="2" x2="22" y1="2" y2="22"/><path d="M8.5 8.5A10 10 0 0 1 19.3 10"/><path d="M12 12a6 6 0 0 1 2.8.7"/><path d="M5 5a14 14 0 0 1 12.2 2.9"/><path d="M12 20.5a1 1 0 1 0 0-2 1 1 0 0 0 0 2z"/></>
+        };
+
+        const Icon = ({ name, className }) => {
+            const content = ICON_PATHS[name];
+            if (!content) return <span className={className}>?</span>;
+            return (
+                <svg 
+                    xmlns="http://www.w3.org/2000/svg" 
+                    width="24" height="24" 
+                    viewBox="0 0 24 24" 
+                    fill="none" 
+                    stroke="currentColor" 
+                    strokeWidth="2" 
+                    strokeLinecap="round" 
+                    strokeLinejoin="round" 
+                    className={className}
+                >
+                    {content}
+                </svg>
+            );
+        };
+
+        const CLUBS = {
+            MY_CLUB: {
+                id: 'my_club',
+                name: 'My Club',
+                color: '#10B981',
+                tailwindBg: 'bg-emerald-500',
+                candidates: [
+                    { id: 'tony_frangieh', name: 'Tony Frangieh' },
+                    { id: 'yorgo_al_alam', name: 'Yorgo Al Alam' },
+                    { id: 'mohamad_al_sabbagh', name: 'Mohamad Al Sabbagh' }
+                ]
+            },
+            DEBATE_CLUB: {
+                id: 'debate_club',
+                name: 'Debate Club',
+                color: '#DC2626',
+                tailwindBg: 'bg-red-600',
+                candidates: [
+                    { id: 'roudy_ayoub', name: 'Roudy Ayoub' },
+                    { id: 'simon_daoud', name: 'Simon Daoud' },
+                    { id: 'tracy_rouhana', name: 'Tracy Rouhana' }
+                ]
+            }
+        };
+
+        const ALL_CANDIDATES = [
+            ...CLUBS.MY_CLUB.candidates.map(c => ({ ...c, clubId: 'my_club' })),
+            ...CLUBS.DEBATE_CLUB.candidates.map(c => ({ ...c, clubId: 'debate_club' }))
+        ];
+
+        // --- MAIN APP LOGIC ---
+        function ElectionSystem() {
+            const [user, setUser] = useState(null);
+            const [votes, setVotes] = useState({});
+            const [config, setConfig] = useState({ maxVotes: 0 });
+            const [logs, setLogs] = useState([]);
+            const [loading, setLoading] = useState(true);
+            const [demoMode, setDemoMode] = useState(false);
+            const [appState, setAppState] = useState('login');
+            const [role, setRole] = useState(null);
+            const [passwordInput, setPasswordInput] = useState('');
+            const [loginError, setLoginError] = useState('');
+            const [tempMaxVotes, setTempMaxVotes] = useState(0);
+
+            // Auth
+            useEffect(() => {
+                signInAnonymously(auth).catch(err => {
+                    console.warn("Auth failed, switching to Demo Mode");
+                    setDemoMode(true);
+                    setLoading(false);
+                });
+                return onAuthStateChanged(auth, (u) => {
+                    if (u) setUser(u);
+                });
+            }, []);
+
+            // Data Sync
+            useEffect(() => {
+                if (demoMode) {
+                    setLoading(false);
+                    return;
+                }
+                if (!user) return;
+                
+                const handleSyncError = (err) => {
+                    console.warn("Sync failed:", err);
+                    if (err.code === 'permission-denied' || err.code === 'unavailable') {
+                        setDemoMode(true);
+                        setLoading(false);
+                    }
+                };
+
+                // Candidates
+                const unsubCandidates = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'candidates'), (snapshot) => {
+                    const newVotes = {};
+                    let isEmpty = snapshot.empty;
+                    snapshot.forEach(doc => { newVotes[doc.id] = doc.data().count || 0; });
+                    setVotes(newVotes);
+                    setLoading(false);
+                    if (isEmpty) seedDatabase();
+                }, handleSyncError);
+
+                // Config
+                const unsubConfig = onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'config', 'settings'), (docSnap) => {
+                    if (docSnap.exists()) {
+                        const data = docSnap.data();
+                        setConfig(data);
+                        setTempMaxVotes(data.maxVotes || 0);
+                    } else {
+                        setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'config', 'settings'), { maxVotes: 0 }).catch(()=>{});
+                    }
+                }, handleSyncError);
+
+                // Logs (Admin Only)
+                let unsubLogs = () => {};
+                if (role === 'admin') {
+                    unsubLogs = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'audit_logs'), (snapshot) => {
+                        const rawLogs = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+                        rawLogs.sort((a, b) => b.timestamp - a.timestamp);
+                        setLogs(rawLogs.slice(0, 100));
+                    }, handleSyncError);
+                }
+
+                return () => { unsubCandidates(); unsubConfig(); unsubLogs(); };
+            }, [user, role, demoMode]);
+
+            const seedDatabase = async () => {
+                if (demoMode) return;
+                try {
+                    for (const candidate of ALL_CANDIDATES) {
+                        await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'candidates', candidate.id), { 
+                            name: candidate.name, clubId: candidate.clubId, count: 0 
+                        }, { merge: true });
+                    }
+                } catch(e) { console.log(e); }
+            };
+
+            const logAction = async (action, details) => {
+                const newLog = { action, details, timestamp: Date.now(), id: Math.random(), adminId: 'local' };
+                if (demoMode) {
+                    setLogs(prev => [newLog, ...prev].slice(0, 50));
+                } else if (user) {
+                    addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'audit_logs'), newLog).catch(()=>{});
+                }
+            };
+
+            const handleVote = async (candidateId, incrementValue) => {
+                if ((!user && !demoMode) || role !== 'admin') return;
+                
+                if (incrementValue > 0 && stats.isCapReached) {
+                    alert(`LIMIT REACHED: Only ${config.maxVotes} votes allowed!`);
+                    return;
+                }
+                
+                const cName = ALL_CANDIDATES.find(c => c.id === candidateId)?.name;
+
+                if (demoMode) {
+                    setVotes(prev => ({
+                        ...prev,
+                        [candidateId]: Math.max(0, (prev[candidateId] || 0) + incrementValue)
+                    }));
+                    logAction(incrementValue > 0 ? "VOTE_ADD" : "VOTE_REMOVE", `${cName} (${incrementValue > 0 ? '+1' : '-1'})`);
+                } else {
+                    try {
+                        const ref = doc(db, 'artifacts', appId, 'public', 'data', 'candidates', candidateId);
+                        await updateDoc(ref, { count: increment(incrementValue) });
+                        logAction(incrementValue > 0 ? "VOTE_ADD" : "VOTE_REMOVE", `${cName} (${incrementValue > 0 ? '+1' : '-1'})`);
+                    } catch (err) { alert("Error voting"); }
+                }
+            };
+
+            const saveMaxVotes = async () => {
+                const val = parseInt(tempMaxVotes);
+                if (demoMode) {
+                    setConfig({ maxVotes: val });
+                    logAction("SETTINGS", `Cap set to ${val}`);
+                    alert("Limit Updated (Local)");
+                } else {
+                    try {
+                        await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'config', 'settings'), { maxVotes: val }, { merge: true });
+                        logAction("SETTINGS", `Cap set to ${val}`);
+                        alert("Limit Updated");
+                    } catch (e) { alert("Error saving settings"); }
+                }
+            };
+
+            const handleReset = async () => {
+                if (!window.confirm("⚠️ WARNING: This will DELETE all votes. Proceed?")) return;
+                
+                if (demoMode) {
+                    setVotes({});
+                    logAction("RESET", "Election Reset");
+                    alert("Election Reset Complete (Local)");
+                } else {
+                    try {
+                        const batch = writeBatch(db);
+                        ALL_CANDIDATES.forEach(c => {
+                            batch.set(doc(db, 'artifacts', appId, 'public', 'data', 'candidates', c.id), { count: 0 }, { merge: true });
+                        });
+                        await batch.commit();
+                        logAction("RESET", "Election Reset");
+                        alert("Election Reset Complete");
+                    } catch(e) { alert("Reset failed"); }
+                }
+            };
+
+            const stats = useMemo(() => {
+                let totalVotes = 0;
+                const chartData = [];
+                const clubData = [
+                    { name: 'My Club', value: 0, fill: CLUBS.MY_CLUB.color },
+                    { name: 'Debate Club', value: 0, fill: CLUBS.DEBATE_CLUB.color }
+                ];
+                const richCandidates = ALL_CANDIDATES.map(c => {
+                    const count = votes[c.id] || 0;
+                    return { ...c, votes: count };
+                });
+                richCandidates.forEach(c => {
+                    totalVotes += c.votes;
+                    if (c.clubId === 'my_club') clubData[0].value += c.votes;
+                    else clubData[1].value += c.votes;
+                    chartData.push({
+                        name: c.name.split(' ')[0], fullName: c.name, votes: c.votes,
+                        fill: c.clubId === 'my_club' ? CLUBS.MY_CLUB.color : CLUBS.DEBATE_CLUB.color
+                    });
+                });
+                const sortedCandidates = [...richCandidates].sort((a, b) => b.votes - a.votes);
+                const top3 = sortedCandidates.slice(0, 3);
+                const max = config.maxVotes || 0;
+                const isCapReached = max > 0 && totalVotes >= max;
+                return { totalVotes, clubData, chartData, sortedCandidates, top3, isCapReached };
+            }, [votes, config]);
+
+            const handleAdminLogin = (e) => {
+                e.preventDefault();
+                if (passwordInput === 'AUT2025') {
+                    setRole('admin'); setAppState('dashboard');
+                } else {
+                    setLoginError('Invalid Password');
+                }
+            };
+
+            if (loading) return <div className="min-h-screen flex items-center justify-center font-mono text-slate-500">Connecting...</div>;
+
+            if (appState === 'login') {
+                return (
+                    <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
+                        <div className="w-full max-w-md bg-white rounded-2xl p-8 shadow-xl">
+                            <div className="text-center mb-8">
+                                <div className="w-12 h-12 bg-blue-900 rounded-lg flex items-center justify-center mx-auto mb-4">
+                                    <Icon name="GraduationCap" className="text-white w-8 h-8" />
+                                </div>
+                                <h1 className="text-2xl font-bold text-slate-900">AUT ELECTIONS 2025</h1>
+                                {demoMode && <div className="text-xs text-amber-600 font-bold mt-2 bg-amber-100 inline-block px-2 py-1 rounded">OFFLINE DEMO MODE</div>}
+                            </div>
+                            <form onSubmit={handleAdminLogin} className="space-y-4">
+                                <input type="password" placeholder="Admin Password"
+                                    className="w-full px-4 py-3 border rounded-lg"
+                                    value={passwordInput} onChange={(e) => setPasswordInput(e.target.value)} />
+                                {loginError && <p className="text-red-500 text-sm">{loginError}</p>}
+                                <button type="submit" className="w-full bg-blue-900 text-white font-bold py-3 rounded-lg hover:bg-blue-800 transition">Login Admin</button>
+                            </form>
+                            <button onClick={() => { setRole('viewer'); setAppState('dashboard'); }} className="w-full mt-4 bg-slate-100 text-slate-700 font-bold py-3 rounded-lg hover:bg-slate-200 transition">
+                                Viewer Mode
+                            </button>
+                        </div>
+                    </div>
+                );
+            }
+
+            return (
+                <div className="min-h-screen bg-slate-50 font-sans text-slate-800 pb-20">
+                    {demoMode && (
+                        <div className="bg-amber-500 text-white text-xs font-bold text-center py-1 flex items-center justify-center">
+                            <Icon name="WifiOff" className="w-3 h-3 mr-1" /> PREVIEW MODE - Check Firebase Keys to Go Live
+                        </div>
+                    )}
+                    <header className="bg-white shadow-sm sticky top-0 z-30 p-4 flex justify-between items-center">
+                        <div className="flex items-center space-x-2">
+                            <div className="w-8 h-8 bg-blue-900 rounded flex items-center justify-center"><Icon name="GraduationCap" className="text-white w-5 h-5" /></div>
+                            <h1 className="font-bold text-blue-900">AUT ELECTIONS</h1>
+                        </div>
+                        <div className="text-xs font-bold uppercase text-slate-400">
+                            Votes: {stats.totalVotes} / {config.maxVotes || '∞'}
+                        </div>
+                        <div className="flex items-center space-x-2">
+                            {role === 'admin' && (
+                                <>
+                                    <input type="number" value={tempMaxVotes} onChange={(e) => setTempMaxVotes(e.target.value)}
+                                        className="w-12 border rounded p-1 text-center text-xs" />
+                                    <button onClick={saveMaxVotes} className="p-1 bg-blue-900 text-white rounded hover:bg-blue-800"><Icon name="Save" className="w-4 h-4" /></button>
+                                    <button onClick={handleReset} className="p-1 bg-red-100 text-red-600 rounded hover:bg-red-200"><Icon name="Trash2" className="w-4 h-4" /></button>
+                                </>
+                            )}
+                            <button onClick={() => setAppState('login')}><Icon name="Lock" className="w-4 h-4 text-slate-400 hover:text-red-500" /></button>
+                        </div>
+                    </header>
+
+                    <main className="max-w-7xl mx-auto p-4 space-y-6">
+                        <div className="bg-white rounded-xl shadow p-6 flex justify-center items-end space-x-2 h-48 border border-slate-100">
+                            {[1, 0, 2].map(idx => {
+                                const c = stats.top3[idx];
+                                if(!c) return null;
+                                const h = idx === 0 ? 'h-32' : idx === 1 ? 'h-24' : 'h-16';
+                                const bg = idx === 0 ? 'bg-yellow-50' : 'bg-slate-50';
+                                return (
+                                    <div key={idx} className={`w-1/3 ${h} ${bg} rounded-t-lg flex flex-col items-center justify-end p-2 border-b-4 ${c.clubId === 'my_club' ? 'border-emerald-500' : 'border-red-600'}`}>
+                                        {idx === 0 && <Icon name="Trophy" className="w-6 h-6 text-yellow-500 mb-1" />}
+                                        <span className="font-bold text-xs text-center">{c.name}</span>
+                                        <span className="text-xs font-mono">{c.votes}</span>
+                                    </div>
+                                )
+                            })}
+                        </div>
+
+                        {/* CHARTS CONTAINER */}
+                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 h-auto lg:h-64">
+                            {/* PIE CHART */}
+                            <div className="bg-white rounded-xl shadow p-4 border border-slate-100 lg:col-span-1 h-64 lg:h-auto">
+                                <h3 className="text-xs font-bold text-slate-400 uppercase mb-2 text-center">Club Split</h3>
+                                <ResponsiveContainer width="100%" height="90%">
+                                    <PieChart>
+                                        <Pie
+                                            data={stats.clubData}
+                                            cx="50%"
+                                            cy="50%"
+                                            innerRadius={40}
+                                            outerRadius={60}
+                                            paddingAngle={5}
+                                            dataKey="value"
+                                        >
+                                            {stats.clubData.map((entry, index) => (
+                                                <Cell key={`cell-${index}`} fill={entry.fill} />
+                                            ))}
+                                        </Pie>
+                                        <Tooltip />
+                                    </PieChart>
+                                </ResponsiveContainer>
+                            </div>
+
+                            {/* BAR CHART */}
+                            <div className="bg-white rounded-xl shadow p-4 border border-slate-100 lg:col-span-2 h-64 lg:h-auto">
+                                <h3 className="text-xs font-bold text-slate-400 uppercase mb-2">Results</h3>
+                                <ResponsiveContainer width="100%" height="90%">
+                                    <BarChart data={stats.chartData}>
+                                        <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                                        <XAxis dataKey="name" />
+                                        <Tooltip />
+                                        <Bar dataKey="votes">
+                                            {stats.chartData.map((e, i) => <Cell key={i} fill={e.fill} />)}
+                                        </Bar>
+                                    </BarChart>
+                                </ResponsiveContainer>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {['MY_CLUB', 'DEBATE_CLUB'].map(key => (
+                                <div key={key} className={`p-4 rounded-xl ${key === 'MY_CLUB' ? 'bg-emerald-50/50' : 'bg-red-50/50'} border border-slate-200`}>
+                                    <h3 className={`font-black text-center mb-4 ${key === 'MY_CLUB' ? 'text-emerald-700' : 'text-red-700'}`}>{CLUBS[key].name}</h3>
+                                    <div className="space-y-2">
+                                        {CLUBS[key].candidates.map(c => (
+                                            <div key={c.id} className="bg-white p-3 rounded shadow-sm flex justify-between items-center border border-slate-100">
+                                                <div>
+                                                    <div className="font-bold text-sm text-slate-700">{c.name}</div>
+                                                    <div className="text-xs text-slate-500 font-bold">{votes[c.id] || 0} Votes</div>
+                                                </div>
+                                                {role === 'admin' && (
+                                                    <div className="flex space-x-1">
+                                                        <button onClick={() => handleVote(c.id, -1)} disabled={!votes[c.id]} className="p-2 bg-yellow-50 text-yellow-600 rounded hover:bg-yellow-100"><Icon name="RotateCcw" className="w-4 h-4" /></button>
+                                                        <button onClick={() => handleVote(c.id, 1)} className={`p-2 text-white rounded flex items-center space-x-1 ${CLUBS[key].tailwindBg} hover:opacity-90`}>
+                                                            <Icon name="Vote" className="w-4 h-4" /> <span className="text-xs font-bold">ADD</span>
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+
+                        {role === 'admin' && (
+                            <div className="bg-slate-900 text-slate-400 p-4 rounded-xl text-xs font-mono h-40 overflow-y-auto border border-slate-800 shadow-inner">
+                                <div className="flex items-center space-x-2 mb-2 text-white border-b border-slate-700 pb-2">
+                                    <Icon name="Activity" className="w-4 h-4" /> <span>LIVE AUDIT LOG</span>
+                                </div>
+                                {logs.map(l => (
+                                    <div key={l.id} className="mb-1 border-b border-slate-800/50 pb-1 last:border-0">
+                                        <span className="opacity-50">{new Date(l.timestamp).toLocaleTimeString()}</span> 
+                                        <span className={l.action.includes('ADD') ? 'text-green-400 ml-2 font-bold' : 'text-red-400 ml-2 font-bold'}>[{l.action}]</span> 
+                                        <span className="ml-2 text-white">{l.details}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </main>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<ElectionSystem />);
+    </script>
+</body>
+</html>
